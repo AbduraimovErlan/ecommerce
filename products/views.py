@@ -1,12 +1,14 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from products.serializers import ProductSerializer
-from products.models import Product
+from products.serializers import ProductSerializer, ProductCreateUpdateSerializer, ReviewSerializer
+from products.models import Product, Review
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 
 
 @api_view(['GET'])
 def test(request):
+    print(request.user)
     context = {
         'integer': 100,
         'string': "hello world",
@@ -16,18 +18,91 @@ def test(request):
     return Response(data=context)
 
 
-@api_view(["GET"])
+@api_view(["GET", "POST"])
 def product_list_view(request):
-    products = Product.objects.all()
-    data = ProductSerializer(products, many=True).data
-    return Response(data=data)
+    if request.method == "GET":
+        products = Product.objects.all()
+        data = ProductSerializer(products, many=True).data
+        return Response(data=data)
+    elif request.method == "POST":
+        selializer = ProductCreateUpdateSerializer(data=request.data)
+        if not selializer.is_valid():
+            return Response(data={'errors': selializer.errors}, status=status.HTTP_406_NOT_ACCEPTABLE)
 
-@api_view(["GET"])
+        title = request.data.get('title')
+        description = request.data.get('description')
+        price = request.data.get('price')
+        category_id = request.data.get('category_id')
+        product = Product.objects.create(title=title, description=description, price=price, category_id=category_id)
+        for i in request.data.get('reviews', []):
+            Review.objects.create(
+                text=i['text'],
+                product=product
+            )
+        return Response(data=ProductSerializer(product).data, status=status.HTTP_201_CREATED)
+
+@api_view(["GET", "PUT", "DELETE"])
 def product_detail_view(request, id):
     try:
         product = Product.objects.get(id=id)
     except Product.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND, data={'message': 'Product not found'})
-    product = Product.objects.get(id=id)
-    data = ProductSerializer(product).data
-    return Response(data=data)
+
+    if request.method == "GET":
+        data = ProductSerializer(product).data
+        return Response(data=data)
+    elif request.method =="DELETE":
+        product.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    elif request.method =="PUT":
+        product.title=request.data.get('title')
+        product.description = request.data.get('description')
+        product.price = request.data.get('price')
+        product.category_id = request.data.get('category_id')
+        product.save()
+        return Response(data=ProductSerializer(product).data)
+
+from django.contrib.auth import authenticate
+from rest_framework.authtoken.models import Token
+
+@api_view(['POST'])
+def authorization(request):
+    if request.method == "POST":
+        # user = authenticate(**request.data)
+        username = request.data.get('username')
+        password = request.data.get('password')
+        user = authenticate(username=username, password=password)
+        if user:
+            Token.objects.filter(user=user).delete()
+            token = Token.objects.create(user=user)
+            return Response(data={'key': token.key})
+        return Response(data={'error': 'User not found'},
+                        status=status.HTTP_404_NOT_FOUND)
+            # try:
+            #     token = Token.objects.get(user=user)
+            # except Token.DoesNotExist:
+
+
+from django.contrib.auth.models import User
+
+
+@api_view(['POST'])
+def registration(request):
+    if request.method == "POST":
+        username = request.data.get('username')
+        password = request.data.get('password')
+        User.objects.create_user(username=username, password=password)
+        return Response(data={'message': 'User created'}, status=status.HTTP_201_CREATED)
+
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_reviews(request):
+    reviews = Review.objects.filter(author=request.user)
+    serializer = ReviewSerializer(reviews, many=True)
+    return Response(data=serializer.data)
+
+
+
