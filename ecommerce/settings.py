@@ -39,11 +39,17 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'products',
-    'rest_framework.authtoken'
+    'rest_framework.authtoken',
+    'main',
+    'django_filters',
 ]
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES':[
         'rest_framework.authentication.TokenAuthentication'
+    ],
+    'PAGE_SIZE': 3,
+    'DEFAULT_FILTER_BACKENDS':[
+        'django_filters.rest_framework.DjangoFilterBackend'
     ]
 }
 MIDDLEWARE = [
